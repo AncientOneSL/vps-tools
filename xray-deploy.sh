@@ -1,13 +1,26 @@
 #!/bin/bash
 # Xray VLESS+Reality 一键部署 (Ubuntu 20.04)
+# 自动生成新密钥
 set -e
 
-echo "[1/3] 安装 Xray..."
+echo "[1/4] 安装 Xray..."
 apt update -qq && apt install -y -qq curl
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
-echo "[2/3] 写入配置..."
-cat > /usr/local/etc/xray/config.json << 'EOF'
+echo "[2/4] 生成密钥..."
+KEYS=$(xray x25519)
+PK=$(echo "$KEYS" | head -1 | awk '{print $NF}')
+PBK=$(echo "$KEYS" | tail -1 | awk '{print $NF}')
+UI=$(xray uuid)
+SI=$(openssl rand -hex 4)
+
+echo "  Private Key: $PK"
+echo "  Public Key:  $PBK"
+echo "  UUID:        $UI"
+echo "  Short ID:    $SI"
+
+echo "[3/4] 写入配置..."
+cat > /usr/local/etc/xray/config.json << EOFCONF
 {
   "log": {"loglevel": "warning"},
   "inbounds": [{
@@ -15,7 +28,7 @@ cat > /usr/local/etc/xray/config.json << 'EOF'
     "port": 443,
     "protocol": "vless",
     "settings": {
-      "clients": [{"email": "u1", "id": "5fc7434d-929d-4580-a34d-422d0399fc8b", "flow": "xtls-rprx-vision"}],
+      "clients": [{"email": "u1", "id": "${UI}", "flow": "xtls-rprx-vision"}],
       "decryption": "none"
     },
     "streamSettings": {
@@ -26,8 +39,8 @@ cat > /usr/local/etc/xray/config.json << 'EOF'
         "dest": "www.microsoft.com:443",
         "xver": 0,
         "serverNames": ["www.microsoft.com"],
-        "privateKey": "8kus84x8PIEL6kWTOsaLsh-JnolZ3Y7ZIaSOHFFFVX0",
-        "shortIds": ["940dce2e"]
+        "privateKey": "${PK}",
+        "shortIds": ["${SI}"]
       },
       "tcpSettings": {"header": {"type": "none"}}
     },
@@ -41,16 +54,17 @@ cat > /usr/local/etc/xray/config.json << 'EOF'
     "rules": [{"type": "field", "ip": ["geoip:private"], "outboundTag": "blocked"}]
   }
 }
-EOF
+EOFCONF
 
-echo "[3/3] 启动 Xray..."
+echo "[4/4] 启动 Xray..."
 systemctl enable xray && systemctl restart xray
 sleep 2
 
+STATUS=$(systemctl is-active xray)
 echo ""
-echo "========== 部署完成 =========="
-echo "Xray 状态: $(systemctl is-active xray)"
-echo "Public Key: _-gA7lPsNpPh5DJWacVX7XheAgCgwk7u6MbhfVaygSs"
-echo "UUID: 5fc7434d-929d-4580-a34d-422d0399fc8b"
-echo "Short ID: 940dce2e"
-echo "=============================="
+echo "=========================================="
+echo "  Xray 状态: $STATUS"
+echo "  Public Key: $PBK"
+echo "  UUID:       $UI"
+echo "  Short ID:   $SI"
+echo "=========================================="
